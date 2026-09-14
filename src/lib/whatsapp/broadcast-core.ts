@@ -266,26 +266,53 @@ export async function deliverBroadcast(
     let lastError: string | null = null;
 
     for (const variant of variants) {
-      try {
-        const result = await sendTemplateMessage({
-          phoneNumberId: plan.phoneNumberId,
-          accessToken: plan.accessToken,
-          to: variant,
-          templateName: plan.templateName,
-          language: plan.templateLanguage,
-          template: plan.templateRow ?? undefined,
-          params: recipient.params,
-        });
-        sentMessageId = result.messageId;
-        lastError = null;
-        break;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        lastError = message;
-        // Only a "recipient not allowed" error is worth another variant.
-        if (!isRecipientNotAllowedError(message)) break;
+      let retries = 0;
+      const maxRetries = 2;
+      let shouldTryNextVariant = false;
+
+      while (retries <= maxRetries) {
+        try {
+          const result = await sendTemplateMessage({
+            phoneNumberId: plan.phoneNumberId,
+            accessToken: plan.accessToken,
+            to: variant,
+            templateName: plan.templateName,
+            language: plan.templateLanguage,
+            template: plan.templateRow ?? undefined,
+            params: recipient.params,
+          });
+          sentMessageId = result.messageId;
+          lastError = null;
+          break; // success -> break retry loop
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          lastError = message;
+          
+          const isRateLimit = message.toLowerCase().includes('rate limit') || message.includes('130429') || message.includes('429');
+
+          if (isRateLimit && retries < maxRetries) {
+            retries++;
+            console.warn(`[broadcast-core] Rate limit hit for ${variant}, retrying in ${retries * 1000}ms...`);
+            await new Promise(resolve => setTimeout(resolve, retries * 1000));
+            continue;
+          }
+
+          console.error(`[broadcast-core] Failed to send to ${variant}:`, message);
+
+          // Only a "recipient not allowed" error is worth another variant.
+          if (isRecipientNotAllowedError(message)) {
+            shouldTryNextVariant = true;
+          }
+          break; // failure -> break retry loop
+        }
       }
+
+      if (sentMessageId) break; // success -> break variant loop
+      if (!shouldTryNextVariant) break; // fatal error -> break variant loop
     }
+    
+    // Throttle base delay to avoid hitting limits continuously
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     if (sentMessageId) {
       sentCount++;

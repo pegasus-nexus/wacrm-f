@@ -31,7 +31,15 @@ async function throwMetaError(response: Response, fallback: string): Promise<nev
   let message = fallback
   try {
     const data = (await response.json()) as MetaErrorResponse
-    if (data.error?.message) message = data.error.message
+    if (data.error) {
+      console.error('[Meta API Error]', JSON.stringify(data.error, null, 2))
+    }
+    if (data.error?.message) {
+      message = data.error.message
+      if (data.error.code) {
+        message = `${message} (Code: ${data.error.code})`
+      }
+    }
   } catch {
     // response body wasn't JSON — keep the fallback
   }
