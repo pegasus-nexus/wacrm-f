@@ -260,7 +260,10 @@ export async function deliverBroadcast(
 ): Promise<void> {
   let sentCount = 0;
 
+  console.log(`[broadcast-core] Starting delivery for broadcast ${plan.broadcastId} with ${plan.planned.length} recipients`);
+
   for (const recipient of plan.planned) {
+    console.log(`[broadcast-core] Processing recipient row ${recipient.recipientRowId} (phone: ${recipient.phone})`);
     const variants = phoneVariants(recipient.phone);
     let sentMessageId: string | null = null;
     let lastError: string | null = null;
