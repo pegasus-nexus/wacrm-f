@@ -355,6 +355,7 @@ async function handleStatusUpdate(status: {
   status: string
   timestamp: string
   recipient_id: string
+  errors?: any[]
 }) {
   // 1) Mirror onto messages (legacy behavior) — Meta's status values
   //    already match the CHECK constraint on messages.status. No
@@ -398,6 +399,16 @@ async function handleStatusUpdate(status: {
     if (status.status === 'sent' && !('sent_at' in update)) update.sent_at = tsIso
     if (status.status === 'delivered') update.delivered_at = tsIso
     if (status.status === 'read') update.read_at = tsIso
+    if (status.status === 'failed') {
+      const err = status.errors?.[0]
+      if (err) {
+        const errorMsg = `[Webhook Error] ${err.title || err.message || 'Unknown error'} (Code: ${err.code || 'unknown'})`
+        update.error_message = errorMsg
+        console.error(`[Webhook] Broadcast message ${status.id} failed:`, errorMsg, 'Raw error:', err)
+      } else {
+        console.error(`[Webhook] Broadcast message ${status.id} failed, but no error details provided in payload.`)
+      }
+    }
 
     const { error: recUpdateErr } = await supabaseAdmin()
       .from('broadcast_recipients')
